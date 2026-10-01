@@ -28,7 +28,8 @@ const fieldsInsight = [
   "downloaded", "caption", "views", "reach", "duration", "watchtime",
   "kunjungan", "mengikuti", "likes", "comments", "reposts", "shares", "saves"
 ];
-const fieldsPlan = ["divisi", "title", "format", "objective", "concept", "script"];
+
+const fieldsPlan = ["divisi", "title", "planDate", "format", "objective", "concept", "script"];
 
 /* ==========================================================================
    2. UTILITAS DASAR
@@ -76,6 +77,20 @@ function fmtDate(d) {
   try {
     return new Date(d + "T00:00:00").toLocaleDateString("id-ID", {
       day: "numeric", month: "short", year: "numeric"
+    });
+  } catch (e) {
+    return d;
+  }
+}
+
+function fmtPlanDate(d) {
+  if (!d) return "-";
+  try {
+    return new Date(d + "T00:00:00").toLocaleDateString("id-ID", {
+      weekday: "long",
+      day: "numeric",
+      month: "short",
+      year: "numeric"
     });
   } catch (e) {
     return d;
@@ -988,9 +1003,13 @@ $("#confirmExportBtn")?.addEventListener("click", () => {
 const planOverlay = $("#plannerModalOverlay");
 
 function planCardHtml(p) {
+  const postingText = p.planDate 
+    ? `posting tanggal : ${fmtPlanDate(p.planDate)}` 
+    : `Dibuat: ${fmtDate(p.createdDate)}`;
+
   return `<div class="plan-header">
       <div class="plan-meta">
-        <span class="plan-date">${fmtDate(p.createdDate)}</span>
+        <span class="plan-date">${postingText}</span>
         <span class="plan-format-badge">${p.format}</span>
       </div>
       <h3 class="plan-title">${escapeHtml(p.title)}</h3>
