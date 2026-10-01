@@ -75,7 +75,7 @@
       <div class="filter-field filter-sort"><label>Urutkan</label><select id="sortSelect"><option value="terbaru">Input terbaru</option><option value="watchtime">Waktu tonton</option><option value="likes">Suka terbanyak</option><option value="views">Tayangan terbanyak</option></select></div>
       <button class="btn-ghost" id="refreshSheetBtn">↻ Muat ulang</button>
     </div>
-    <div class="cards-grid" id="sheetGrid"></div>
+	<div class="week-accordion-list" id="sheetGrid"></div>
     <div class="empty-hint" id="sheetEmptyHint" hidden>Belum ada data untuk divisi ini.</div>
   </div>
 </main>
@@ -106,7 +106,7 @@
       <div class="filter-field"><label>Status</label><select id="planStatusFilter"><option value="">Semua</option><option value="planned">Planned</option><option value="progress">Progress</option><option value="done">Done</option><option value="cancel">Cancel</option></select></div>
       <button class="btn-ghost" id="refreshPlannerBtn">↻ Sync</button>
     </div>
-    <div class="planner-grid" id="plannerGrid"></div>
+	<div class="week-accordion-list" id="plannerGrid"></div>
     <div class="empty-hint" id="plannerEmptyHint">Belum ada plan untuk divisi ini.</div>
   </div>
 </main>
@@ -140,6 +140,15 @@
 			<option value="JX">JX</option>
           </select>
         </div>
+		
+		<div class="field full"><label>Pilih Minggu *</label>
+		  <select id="f_week">
+			<option value="Minggu 1">Minggu 1</option>
+			<option value="Minggu 2">Minggu 2</option>
+			<option value="Minggu 3">Minggu 3</option>
+			<option value="Minggu 4">Minggu 4</option>
+		  </select>
+		</div>
 
         <div class="field full"><label>Judul konten *</label><input type="text" id="f_title"></div>
         <div class="field full"><label>Link Konten (opsional)</label><input type="url" id="f_link" placeholder="https://www.instagram.com/..."></div>
@@ -183,6 +192,14 @@
 			<option value="JX">JX</option>
           </select>
         </div>
+		<div class="field"><label>Pilih Minggu *</label>
+		  <select id="p_week">
+			<option value="Minggu 1">Minggu 1</option>
+			<option value="Minggu 2">Minggu 2</option>
+			<option value="Minggu 3">Minggu 3</option>
+			<option value="Minggu 4">Minggu 4</option>
+		  </select>
+		</div>
 		<div class="field"><label>Plan Tanggal Posting *</label><input type="date" id="p_planDate"></div>
         <div class="field"><label>Judul Plan <span class="req">*</span></label><input type="text" id="p_title"></div>
         <div class="field"><label>Format</label><select id="p_format"><option value="video">Video</option><option value="carousel">Carousel</option></select></div>
