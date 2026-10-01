@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Reelsight | Planner & Insight</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script>
+  /* Terapkan tema tersimpan sebelum halaman dirender, agar tidak ada kedipan (flash) */
+  (function () {
+    try {
+      var saved = localStorage.getItem("reelsight_theme");
+      var theme = saved || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      if (theme === "dark") document.documentElement.setAttribute("data-theme", "dark");
+    } catch (e) {}
+  })();
+</script>
+<style>.clickable-embed:hover { background: #DED7FF !important; transform: scale(1.02); }</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brand"><div class="brand-mark"><svg viewBox="0 0 40 40" fill="none"><rect x="4" y="4" width="32" height="32" rx="11" fill="#6C5CE7"/><path d="M16 13.5L27 20L16 26.5V13.5Z" fill="white"/></svg></div><span class="brand-name">Reelsight</span></div>
+  <nav class="tabs" role="tablist">
+    <button class="tab-btn active" data-tab="input">＋ Insight <span class="pending-badge" id="pendingBadge" hidden>0</span></button>
+    <button class="tab-btn" data-tab="lihat">▤ Laporan</button>
+    <button class="tab-btn" data-tab="planner">🗓 Planner</button>
+  </nav>
+  <div class="header-status" id="autosaveStatus"><span class="dot"></span> Tersimpan</div>
+  <button class="theme-toggle" id="themeToggle" type="button" aria-label="Ganti mode gelap/terang" title="Ganti mode gelap/terang">
+    <span id="themeToggleIcon">🌙</span>
+  </button>
+</header>
+
+<div class="top-loading-bar" id="topLoadingBar" hidden><div class="top-loading-progress"></div></div>
+<div class="resume-bar" id="draftResumeBar" hidden></div>
+
+<!-- TAB 1: INPUT -->
+<main class="tab-panel" id="panel-input">
+  <div class="panel-intro"><h1>Kumpulkan insight konten</h1><p>Unggah tangkapan layar. Sistem akan membaca angka otomatis.</p></div>
+  <br></br>
+	<div class="cards-grid" id="draftGrid">
+    <button class="add-tile" id="openAddReelsModal"><span class="add-tile-plus">+</span><span class="add-tile-label">Insight Reels</span></button>
+    <button class="add-tile tile-carousel" id="openAddCarouselModal"><span class="add-tile-plus" style="background: var(--teal); box-shadow: 0 12px 28px -10px rgba(0,194,168,.35);">+</span><span class="add-tile-label" style="color: var(--teal);">Insight Carousel</span></button>
+  </div>
+</main>
+
+<!-- TAB 2: LAPORAN -->
+<main class="tab-panel hidden" id="panel-lihat">
+  <!-- Pilihan Divisi Laporan -->
+  <div id="laporanDivisiMenu" class="divisi-menu">
+    <h2>Pilih Divisi Laporan</h2>
+    <div class="divisi-grid">
+	  <button class="div-card" data-div="EXATA">EXATA</button>
+      <button class="div-card" data-div="JLCT">JLCT</button>
+      <button class="div-card" data-div="JP">JP</button>
+      <button class="div-card" data-div="JX">JX</button>
+    </div>
+  </div>
+
+  <!-- Konten Laporan (Disembunyikan di awal) -->
+  <br></br>
+  <div id="laporanContent" hidden>
+    <div class="header-divisi">
+      <button class="btn-back" id="backLaporanBtn">← Kembali</button>
+      <h3 id="laporanDivisiTitle">Laporan: </h3>
+    </div>
+    <div class="filter-bar">
+      <button class="btn-primary" id="openExportModalBtn" style="background: var(--teal); white-space: nowrap;">📥 Export Excel</button>
+      <div class="filter-search"><input type="text" id="searchInput" placeholder="Cari judul, konten..."></div>
+      <div class="filter-field"><label>Dari</label><input type="date" id="dateFrom"></div>
+      <div class="filter-field"><label>Sampai</label><input type="date" id="dateTo"></div>
+      <div class="filter-field"><label>Tipe</label><select id="typeFilter"><option value="">Semua Tipe</option><option value="reels">Reels</option><option value="carousel">Carousel</option></select></div>
+      <div class="filter-field filter-sort"><label>Urutkan</label><select id="sortSelect"><option value="terbaru">Input terbaru</option><option value="watchtime">Waktu tonton</option><option value="likes">Suka terbanyak</option><option value="views">Tayangan terbanyak</option></select></div>
+      <button class="btn-ghost" id="refreshSheetBtn">↻ Muat ulang</button>
+    </div>
+    <div class="cards-grid" id="sheetGrid"></div>
+    <div class="empty-hint" id="sheetEmptyHint" hidden>Belum ada data untuk divisi ini.</div>
+  </div>
+</main>
+
+<!-- TAB 3: PLANNER -->
+<main class="tab-panel hidden" id="panel-planner">
+  <!-- Pilihan Divisi Planner -->
+  <div id="plannerDivisiMenu" class="divisi-menu">
+    <h2>Pilih Divisi Planner</h2>
+    <div class="divisi-grid">
+      <button class="div-card" data-div="EXATA">EXATA</button>
+      <button class="div-card" data-div="JP">JP</button>
+	  <button class="div-card" data-div="JLCT">JLCT</button>
+      <button class="div-card" data-div="JX">JX</button>
+    </div>
+  </div>
+
+  <!-- Konten Planner (Disembunyikan di awal) -->
+  <br></br>
+  <div id="plannerContent" hidden>
+    <div class="header-divisi">
+      <button class="btn-back" id="backPlannerBtn">← Kembali</button>
+      <h3 id="plannerDivisiTitle">Planner: </h3>
+    </div>
+    <div class="filter-bar planner-filter-bar">
+      <button class="btn-primary" id="openPlanModalBtn" style="white-space: nowrap;">+ Plan Baru</button>
+      <div class="filter-search"><input type="text" id="planSearchInput" placeholder="Cari judul..."></div>
+      <div class="filter-field"><label>Status</label><select id="planStatusFilter"><option value="">Semua</option><option value="planned">Planned</option><option value="progress">Progress</option><option value="done">Done</option><option value="cancel">Cancel</option></select></div>
+      <button class="btn-ghost" id="refreshPlannerBtn">↻ Sync</button>
+    </div>
+    <div class="planner-grid" id="plannerGrid"></div>
+    <div class="empty-hint" id="plannerEmptyHint">Belum ada plan untuk divisi ini.</div>
+  </div>
+</main>
+
+<footer class="app-footer" id="appFooter">
+  <div class="footer-info"><strong id="footerCount">0</strong> insight siap dikirim</div>
+  <button class="btn-primary btn-send" id="sendAllBtn" disabled>Kirim ke Spreadsheet</button>
+</footer>
+
+<!-- MODAL INSIGHT -->
+<div class="modal-overlay" id="modalOverlay" hidden>
+  <div class="modal">
+    <div class="modal-header"><h2 id="modalTitle">Tambah Insight</h2><button class="modal-close" id="modalCloseBtn">&times;</button></div>
+    <div class="modal-body">
+      <div class="modal-image-col">
+        <div class="dropzone" id="dropzone"><input type="file" id="fileInput" accept="image/*" hidden><div class="dropzone-empty" id="dropzoneEmpty"><p>Unggah gambar insight</p></div><div class="dropzone-preview" id="dropzonePreview" hidden><img id="previewImg" src="" style="width:100%; height:100%; object-fit:cover;"><button class="img-maximize" id="maximizeBtn">🔍</button></div></div>
+        <div class="dropzone-actions" id="dropzoneActions" hidden><button class="btn-chip" id="replaceImgBtn">Ganti</button><button class="btn-chip btn-chip-danger" id="removeImgBtn">Hapus</button></div>
+        <button class="btn-scan" id="scanBtn" disabled>Pindai OCR</button><div class="scan-progress" id="scanProgress" hidden><div class="scan-progress-bar" id="scanProgressBar"></div></div>
+      </div>
+      
+      <div class="modal-form-col">
+        <input type="hidden" id="f_type" value="reels">
+        <input type="hidden" id="f_edit_context" value="draft"> <!-- Membedakan Draft vs Sheet -->
+        
+        <!-- Field DIVISI BARU -->
+        <div class="field full"><label>Pilih Divisi *</label>
+          <select id="f_divisi">
+            <option value="EXATA">EXATA</option>
+			<option value="JP">JP</option>
+            <option value="JLCT">JLCT</option>
+			<option value="JX">JX</option>
+          </select>
+        </div>
+
+        <div class="field full"><label>Judul konten *</label><input type="text" id="f_title"></div>
+        <div class="field full"><label>Link Konten (opsional)</label><input type="url" id="f_link" placeholder="https://www.instagram.com/..."></div>
+        
+        <div class="field full type-reels"><label>Script</label><textarea id="f_script" rows="2"></textarea></div>
+        <div class="field full type-reels"><label>Keterangan</label><textarea id="f_caption" rows="2"></textarea></div>
+        <div class="field type-reels"><label>Durasi (detik)</label><input type="text" id="f_duration"></div>
+        <div class="field type-reels"><label>Waktu Tonton</label><input type="text" id="f_watchtime"></div>
+
+        <div class="field full type-carousel"><label>Isi Carousel</label><textarea id="f_isi_carousel" rows="2"></textarea></div>
+        <div class="field type-carousel"><label>Kunjungan Profil *</label><input type="text" id="f_kunjungan"></div>
+        <div class="field type-carousel"><label>Mengikuti *</label><input type="text" id="f_mengikuti"></div>
+
+        <div class="field"><label>Tanggal Posting</label><input type="date" id="f_posted"></div>
+        <div class="field"><label>Diunduh</label><input type="date" id="f_downloaded"></div>
+        <div class="field"><label>Tayangan *</label><input type="text" id="f_views"></div>
+        <div class="field"><label>Pemirsa *</label><input type="text" id="f_reach"></div>
+        <div class="field"><label>Suka *</label><input type="number" id="f_likes"></div>
+        <div class="field"><label>Komentar *</label><input type="number" id="f_comments"></div>
+        <div class="field"><label>Repost *</label><input type="number" id="f_reposts"></div>
+        <div class="field"><label>Share *</label><input type="number" id="f_shares"></div>
+        <div class="field"><label>Save *</label><input type="number" id="f_saves"></div>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="btn-ghost" id="cancelModalBtn">Batal</button><button class="btn-primary" id="saveCardBtn">Simpan</button></div>
+  </div>
+</div>
+
+<!-- MODAL PLANNER -->
+<div class="modal-overlay" id="plannerModalOverlay" hidden>
+  <div class="modal" style="max-width: 600px;">
+    <div class="modal-header"><h2 id="planModalTitle">Tambah Plan Baru</h2><button class="modal-close" id="planModalCloseBtn">&times;</button></div>
+    <div class="modal-body" style="grid-template-columns: 1fr; padding-top: 10px;">
+      <div class="modal-form-col" style="grid-template-columns: 1fr;">
+        <!-- Field DIVISI BARU -->
+        <div class="field"><label>Pilih Divisi *</label>
+          <select id="p_divisi">
+			<option value="EXATA">EXATA</option>
+			<option value="JP">JP</option>
+            <option value="JLCT">JLCT</option>
+			<option value="JX">JX</option>
+          </select>
+        </div>
+        <div class="field"><label>Judul Plan <span class="req">*</span></label><input type="text" id="p_title"></div>
+        <div class="field"><label>Format</label><select id="p_format"><option value="video">Video</option><option value="carousel">Carousel</option></select></div>
+        <div class="field"><label>Objective</label><input type="text" id="p_objective"></div>
+        <div class="field"><label>Konsep</label><textarea id="p_concept" rows="3"></textarea></div>
+        <div class="field"><label>Script</label><textarea id="p_script" rows="6"></textarea></div>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="btn-ghost" id="cancelPlanModalBtn">Batal</button><button class="btn-primary" id="savePlanBtn">Simpan</button></div>
+  </div>
+</div>
+
+<!-- MODAL EXPORT EXCEL BARU -->
+<div class="modal-overlay" id="exportModalOverlay" hidden style="z-index:9000;">
+  <div class="modal" style="max-width: 400px;">
+    <div class="modal-header"><h2>Download Excel</h2><button class="modal-close" id="closeExportBtn">&times;</button></div>
+    <div class="modal-body" style="grid-template-columns: 1fr;">
+      <div class="field" style="margin-bottom:0;">
+        <label>Pilih Data Divisi yang Diunduh</label>
+        <select id="exportDivisiSelect">
+          <option value="all">Semua Divisi (Digabung)</option>
+          <option value="EXATA">EXATA</option>
+			<option value="JP">JP</option>
+            <option value="JLCT">JLCT</option>
+			<option value="JX">JX</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="btn-primary" id="confirmExportBtn" style="width:100%;">Mulai Download</button></div>
+  </div>
+</div>
+
+<!-- MODAL EMBED VIDEO -->
+<div id="embedOverlay" class="modal-overlay" hidden style="z-index: 10000;"><div class="modal" style="max-width: 420px; padding: 16px; text-align:center;"><div style="display:flex; justify-content:space-between; margin-bottom:12px; align-items:center;"><h3 style="margin:0;">Preview</h3><button id="embedCloseBtn" style="background:var(--gray-light); border:none; border-radius:50%; width:32px; height:32px; cursor:pointer;">&times;</button></div><iframe id="embedFrame" src="" width="100%" height="480" frameborder="0" scrolling="no" style="border-radius:8px; border: 1px solid var(--border);"></iframe><a id="embedNewTab" href="" target="_blank" style="display:block; margin-top:16px; color:var(--primary); font-weight:600; text-decoration:none;">Buka Link Asli ↗</a></div></div>
+
+<div class="lightbox" id="lightbox" hidden><button class="lightbox-close" id="lightboxClose">&times;</button><img id="lightboxImg" src=""></div>
+<div class="toast" id="toast"></div>
+
+<!-- Library SheetJS -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script>
+  /* Theme Toggle (Dark Mode) — terpisah dari app.js, tidak mengubah logic yang sudah ada */
+  (function () {
+    var THEME_KEY = "reelsight_theme";
+    var root = document.documentElement;
+    var btn = document.getElementById("themeToggle");
+    var icon = document.getElementById("themeToggleIcon");
+
+    function applyIcon() {
+      var isDark = root.getAttribute("data-theme") === "dark";
+      if (icon) icon.textContent = isDark ? "☀️" : "🌙";
+      if (btn) btn.setAttribute("aria-pressed", isDark ? "true" : "false");
+    }
+
+    applyIcon();
+
+    if (btn) {
+      btn.addEventListener("click", function () {
+        var isDark = root.getAttribute("data-theme") === "dark";
+        if (isDark) {
+          root.removeAttribute("data-theme");
+          localStorage.setItem(THEME_KEY, "light");
+        } else {
+          root.setAttribute("data-theme", "dark");
+          localStorage.setItem(THEME_KEY, "dark");
+        }
+        applyIcon();
+      });
+    }
+  })();
+</script>
+</body>
+</html>
