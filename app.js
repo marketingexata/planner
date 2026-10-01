@@ -24,12 +24,11 @@ let activeDivisiPlanner = null;
 let plannerEditId = null;
 
 const fieldsInsight = [
-  "type", "divisi", "title", "link", "script", "isi_carousel", "posted",
+  "type", "divisi", "week", "title", "link", "script", "isi_carousel", "posted",
   "downloaded", "caption", "views", "reach", "duration", "watchtime",
   "kunjungan", "mengikuti", "likes", "comments", "reposts", "shares", "saves"
 ];
-
-const fieldsPlan = ["divisi", "title", "planDate", "format", "objective", "concept", "script"];
+const fieldsPlan = ["divisi", "week", "title", "planDate", "format", "objective", "concept", "script"];
 
 /* ==========================================================================
    2. UTILITAS DASAR
@@ -482,6 +481,7 @@ function loadEditingRecord(editId, context) {
 
 function loadNewRecordForm(forceType) {
   if ($("#f_divisi")) $("#f_divisi").disabled = false;
+  if ($("#f_week")) $("#f_week").value = "Minggu 1";
 
   const saved = loadJSON(LS_FORMDRAFT, null);
   if (saved && !saved._editId && saved._context === "draft" && saved.type === forceType) {
@@ -888,11 +888,39 @@ function renderSheetGrid() {
     return true;
   });
 
-  list
-    .sort((a, b) => (b._createdAt || 0) - (a._createdAt || 0))
-    .forEach((d) => grid.appendChild(buildCard(d, false, "sheet")));
-
   if ($("#sheetEmptyHint")) $("#sheetEmptyHint").hidden = list.length > 0;
+
+  // Urutan Minggu 1 di atas hingga Minggu 4 di bawah
+  const weeks = ["Minggu 1", "Minggu 2", "Minggu 3", "Minggu 4"];
+
+  weeks.forEach((w) => {
+    const items = list
+      .filter((item) => (item.week || "Minggu 1") === w)
+      .sort((a, b) => {
+        // Urutkan dari tanggal posting terbaru ke paling lama
+        const dateA = a.posted || "";
+        const dateB = b.posted || "";
+        if (dateA !== dateB) return dateB.localeCompare(dateA);
+        return (b._createdAt || 0) - (a._createdAt || 0);
+      });
+
+    if (items.length === 0) return;
+
+    const accordion = document.createElement("details");
+    accordion.className = "week-accordion";
+    accordion.open = true; // Default terbuka / maximize
+    accordion.innerHTML = `
+      <summary class="week-summary">
+        <span>📅 ${w}</span>
+        <span class="week-count-badge">${items.length} Insight</span>
+      </summary>
+      <div class="week-content"></div>
+    `;
+
+    const contentGrid = accordion.querySelector(".week-content");
+    items.forEach((d) => contentGrid.appendChild(buildCard(d, false, "sheet")));
+    grid.appendChild(accordion);
+  });
 }
 
 ["searchInput", "dateFrom", "dateTo", "sortSelect", "typeFilter"].forEach((id) => {
@@ -1090,22 +1118,53 @@ function renderPlannerGrid() {
 
   if ($("#plannerEmptyHint")) $("#plannerEmptyHint").hidden = list.length > 0;
 
-  list
-    .sort((a, b) => new Date(b.createdDate) - new Date(a.createdDate))
-    .forEach((p) => {
+  // Urutan Minggu 1 di atas hingga Minggu 4 di bawah
+  const weeks = ["Minggu 1", "Minggu 2", "Minggu 3", "Minggu 4"];
+
+  weeks.forEach((w) => {
+    const items = list
+      .filter((item) => (item.week || "Minggu 1") === w)
+      .sort((a, b) => {
+        // Urutkan dari tanggal plan/posting terbaru ke paling lama
+        const dateA = a.planDate || a.createdDate || "";
+        const dateB = b.planDate || b.createdDate || "";
+        if (dateA !== dateB) return dateB.localeCompare(dateA);
+        return (b._createdAt || 0) - (a._createdAt || 0);
+      });
+
+    if (items.length === 0) return;
+
+    const accordion = document.createElement("details");
+    accordion.className = "week-accordion";
+    accordion.open = true; // Default terbuka / maximize
+    accordion.innerHTML = `
+      <summary class="week-summary">
+        <span>🗓️ ${w}</span>
+        <span class="week-count-badge">${items.length} Plan</span>
+      </summary>
+      <div class="week-content"></div>
+    `;
+
+    const contentGrid = accordion.querySelector(".week-content");
+    items.forEach((p) => {
       const card = document.createElement("div");
       card.className = `plan-card format-${p.format} status-${p.status}`;
       card.dataset.id = p.id;
       card.innerHTML = planCardHtml(p);
       bindPlanCardEvents(card, p);
-      grid.appendChild(card);
+      contentGrid.appendChild(card);
     });
+
+    grid.appendChild(accordion);
+  });
 }
 
 function openPlanModal(editId = null) {
   plannerEditId = editId;
   if (planOverlay) planOverlay.hidden = false;
   document.body.style.overflow = "hidden";
+  
+  if ($("#p_week")) $("#p_week").value = "Minggu 1";
 
   const saved = loadJSON(LS_PLAN_DRAFT, null);
   const useDraft = !!(saved && saved._editId === editId);
