@@ -1,6 +1,5 @@
 /* ==========================================================================
-   REELSIGHT v4.1 — Multi-Divisi + Server CRUD + Excel Export
-   Refactored: bug fix (invalid `||` operator) + rapikan format + pecah fungsi
+   REELSIGHT v4.4 — Sub Divisi EXATA (AI/MT/SN) di Laporan & Planner + Multi-Divisi + Server CRUD + Excel Export + ARSIP SYSTEM
    ========================================================================== */
 
 /* ==========================================================================
@@ -21,14 +20,16 @@ let currentImageDataUrl = null;
 let activeTab = "input";
 let activeDivisiLaporan = null;
 let activeDivisiPlanner = null;
+let activeSubPlanner = null; // "AI" | "MT" | "SN" | "ALL" (planner, khusus EXATA)
+let activeSubLaporan = null; // "AI" | "MT" | "SN" | "ALL" (hanya dipakai saat divisi = EXATA)
 let plannerEditId = null;
 
 const fieldsInsight = [
-  "type", "divisi", "week", "title", "link", "script", "isi_carousel", "posted",
+  "type", "divisi", "subdivisi", "week", "title", "link", "script", "isi_carousel", "posted",
   "downloaded", "caption", "views", "reach", "duration", "watchtime",
   "kunjungan", "mengikuti", "likes", "comments", "reposts", "shares", "saves"
 ];
-const fieldsPlan = ["divisi", "week", "title", "planDate", "format", "objective", "concept", "script"];
+const fieldsPlan = ["divisi", "subdivisi", "week", "title", "planDate", "format", "objective", "concept", "script"];
 
 /* ==========================================================================
    2. UTILITAS DASAR
@@ -94,6 +95,25 @@ function fmtPlanDate(d) {
   } catch (e) {
     return d;
   }
+}
+
+/* Label "EXATA · AI" untuk kartu */
+function divisiLabel(d) {
+  if (!d.divisi) return "";
+  return d.divisi + (d.subdivisi ? " · " + d.subdivisi : "");
+}
+
+/* Urutan kartu: tanggal posting TERLAMA di awal (kiri/atas) -> TERBARU di akhir (kanan/bawah).
+   Item tanpa tanggal ditaruh paling akhir; jika tanggal sama, urut berdasar waktu input. */
+function compareByDateAsc(dateA, dateB, createdA, createdB) {
+  const a = dateA || "";
+  const b = dateB || "";
+  if (a !== b) {
+    if (!a) return 1;
+    if (!b) return -1;
+    return String(a).localeCompare(String(b));
+  }
+  return (createdA || 0) - (createdB || 0);
 }
 
 let toastTimer;
@@ -187,11 +207,13 @@ function switchTab(tabName) {
   $("#panel-input")?.classList.toggle("hidden", activeTab !== "input");
   $("#panel-lihat")?.classList.toggle("hidden", activeTab !== "lihat");
   $("#panel-planner")?.classList.toggle("hidden", activeTab !== "planner");
+  $("#panel-arsip")?.classList.toggle("hidden", activeTab !== "arsip"); // <-- LOGIKA TAB ARSIP
   $("#appFooter")?.classList.toggle("hide", activeTab !== "input");
 
   if (activeTab === "lihat") {
     if (!activeDivisiLaporan) {
       if ($("#laporanDivisiMenu")) $("#laporanDivisiMenu").hidden = false;
+      if ($("#laporanSubMenu")) $("#laporanSubMenu").hidden = true;
       if ($("#laporanContent")) $("#laporanContent").hidden = true;
     }
     if (sheetData.length === 0) fetchSheetData();
@@ -200,9 +222,16 @@ function switchTab(tabName) {
   if (activeTab === "planner") {
     if (!activeDivisiPlanner) {
       if ($("#plannerDivisiMenu")) $("#plannerDivisiMenu").hidden = false;
+      if ($("#plannerSubMenu")) $("#plannerSubMenu").hidden = true;
       if ($("#plannerContent")) $("#plannerContent").hidden = true;
     }
     if (plannerData.length === 0) fetchPlannerData();
+  }
+
+  if (activeTab === "arsip") {
+    if (sheetData.length === 0) fetchSheetData();
+    if (plannerData.length === 0) fetchPlannerData();
+    if (typeof renderArsipGrid === "function") renderArsipGrid();
   }
 }
 
@@ -210,36 +239,117 @@ $all(".tab-btn").forEach((btn) => {
   btn.addEventListener("click", () => switchTab(btn.dataset.tab));
 });
 
+function laporanLabel() {
+  const sub = activeDivisiLaporan === "EXATA" && activeSubLaporan && activeSubLaporan !== "ALL"
+    ? " · " + activeSubLaporan : "";
+  return activeDivisiLaporan + sub;
+}
+
+function showLaporanContent() {
+  if ($("#laporanDivisiTitle")) $("#laporanDivisiTitle").textContent = "Laporan: " + laporanLabel();
+  if ($("#laporanDivisiMenu")) $("#laporanDivisiMenu").hidden = true;
+  if ($("#laporanSubMenu")) $("#laporanSubMenu").hidden = true;
+  if ($("#laporanContent")) $("#laporanContent").hidden = false;
+  renderSheetGrid();
+}
+
+function resetLaporanMenu() {
+  activeDivisiLaporan = null;
+  activeSubLaporan = null;
+  if ($("#laporanDivisiMenu")) $("#laporanDivisiMenu").hidden = false;
+  if ($("#laporanSubMenu")) $("#laporanSubMenu").hidden = true;
+  if ($("#laporanContent")) $("#laporanContent").hidden = true;
+}
+
 $all("#laporanDivisiMenu .div-card").forEach((btn) => {
   btn.addEventListener("click", () => {
     activeDivisiLaporan = btn.dataset.div;
-    if ($("#laporanDivisiTitle")) $("#laporanDivisiTitle").textContent = "Laporan: " + activeDivisiLaporan;
-    if ($("#laporanDivisiMenu")) $("#laporanDivisiMenu").hidden = true;
-    if ($("#laporanContent")) $("#laporanContent").hidden = false;
-    renderSheetGrid();
+    activeSubLaporan = null;
+    if (activeDivisiLaporan === "EXATA") {
+      // EXATA: pilih dulu bagian AI / MT / SN
+      if ($("#laporanDivisiMenu")) $("#laporanDivisiMenu").hidden = true;
+      if ($("#laporanSubMenu")) $("#laporanSubMenu").hidden = false;
+      if ($("#laporanContent")) $("#laporanContent").hidden = true;
+      return;
+    }
+    showLaporanContent();
   });
 });
 
-$("#backLaporanBtn")?.addEventListener("click", () => {
-  activeDivisiLaporan = null;
-  if ($("#laporanDivisiMenu")) $("#laporanDivisiMenu").hidden = false;
-  if ($("#laporanContent")) $("#laporanContent").hidden = true;
+$all("#laporanSubMenu .div-card").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    activeSubLaporan = btn.dataset.sub;
+    showLaporanContent();
+  });
 });
+
+$("#backLaporanSubBtn")?.addEventListener("click", resetLaporanMenu);
+
+$("#backLaporanBtn")?.addEventListener("click", () => {
+  if (activeDivisiLaporan === "EXATA") {
+    // kembali ke pilihan AI / MT / SN
+    activeSubLaporan = null;
+    if ($("#laporanSubMenu")) $("#laporanSubMenu").hidden = false;
+    if ($("#laporanContent")) $("#laporanContent").hidden = true;
+  } else {
+    resetLaporanMenu();
+  }
+});
+
+function plannerLabel() {
+  const sub = activeDivisiPlanner === "EXATA" && activeSubPlanner && activeSubPlanner !== "ALL"
+    ? " · " + activeSubPlanner : "";
+  return activeDivisiPlanner + sub;
+}
+
+function showPlannerContent() {
+  if ($("#plannerDivisiTitle")) $("#plannerDivisiTitle").textContent = "Planner: " + plannerLabel();
+  if ($("#plannerDivisiMenu")) $("#plannerDivisiMenu").hidden = true;
+  if ($("#plannerSubMenu")) $("#plannerSubMenu").hidden = true;
+  if ($("#plannerContent")) $("#plannerContent").hidden = false;
+  renderPlannerGrid();
+}
+
+function resetPlannerMenu() {
+  activeDivisiPlanner = null;
+  activeSubPlanner = null;
+  if ($("#plannerDivisiMenu")) $("#plannerDivisiMenu").hidden = false;
+  if ($("#plannerSubMenu")) $("#plannerSubMenu").hidden = true;
+  if ($("#plannerContent")) $("#plannerContent").hidden = true;
+}
 
 $all("#plannerDivisiMenu .div-card").forEach((btn) => {
   btn.addEventListener("click", () => {
     activeDivisiPlanner = btn.dataset.div;
-    if ($("#plannerDivisiTitle")) $("#plannerDivisiTitle").textContent = "Planner: " + activeDivisiPlanner;
-    if ($("#plannerDivisiMenu")) $("#plannerDivisiMenu").hidden = true;
-    if ($("#plannerContent")) $("#plannerContent").hidden = false;
-    renderPlannerGrid();
+    activeSubPlanner = null;
+    if (activeDivisiPlanner === "EXATA") {
+      // EXATA: pilih dulu bagian AI / MT / SN
+      if ($("#plannerDivisiMenu")) $("#plannerDivisiMenu").hidden = true;
+      if ($("#plannerSubMenu")) $("#plannerSubMenu").hidden = false;
+      if ($("#plannerContent")) $("#plannerContent").hidden = true;
+      return;
+    }
+    showPlannerContent();
   });
 });
 
+$all("#plannerSubMenu .div-card").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    activeSubPlanner = btn.dataset.sub;
+    showPlannerContent();
+  });
+});
+
+$("#backPlannerSubBtn")?.addEventListener("click", resetPlannerMenu);
+
 $("#backPlannerBtn")?.addEventListener("click", () => {
-  activeDivisiPlanner = null;
-  if ($("#plannerDivisiMenu")) $("#plannerDivisiMenu").hidden = false;
-  if ($("#plannerContent")) $("#plannerContent").hidden = true;
+  if (activeDivisiPlanner === "EXATA") {
+    activeSubPlanner = null;
+    if ($("#plannerSubMenu")) $("#plannerSubMenu").hidden = false;
+    if ($("#plannerContent")) $("#plannerContent").hidden = true;
+  } else {
+    resetPlannerMenu();
+  }
 });
 
 /* ==========================================================================
@@ -370,6 +480,7 @@ async function deleteSheetCard(card, d) {
     sheetData = sheetData.filter((x) => x.id !== d.id);
     saveJSON(LS_SHEETCACHE, sheetData);
     renderSheetGrid();
+    if (typeof renderArsipGrid === "function") renderArsipGrid();
   } catch (e) {
     toast("Gagal menghapus", "error");
     btn.textContent = "🗑 Hapus";
@@ -419,7 +530,7 @@ function buildCard(d, editable, context) {
   const actionHtml = cardActionsHtml();
   const formatLabel = d.type === "carousel" ? "<span style='color:var(--teal)'>• Carousel</span>" : "• Reels";
   const divLabel = d.divisi
-    ? `<span style="background:var(--gray-light); padding:2px 6px; border-radius:4px; margin-right:4px;">${d.divisi}</span>`
+    ? `<span style="background:var(--gray-light); padding:2px 6px; border-radius:4px; margin-right:4px;">${escapeHtml(divisiLabel(d))}</span>`
     : "";
 
   card.innerHTML = `${imgHtml}<div class="card-body">
@@ -454,6 +565,17 @@ function readFormFields(prefix, fields) {
   return out;
 }
 
+function syncSubDivisiField() {
+  const isExata = $("#f_divisi")?.value === "EXATA";
+  if ($("#f_subdivisi_wrap")) $("#f_subdivisi_wrap").hidden = !isExata;
+}
+
+$("#f_divisi")?.addEventListener("change", () => {
+  syncSubDivisiField();
+  if ($("#f_divisi").value !== "EXATA" && $("#f_subdivisi")) $("#f_subdivisi").value = "";
+  autosaveInsightDraft();
+});
+
 function toggleTypeFields(activeType) {
   $all(".type-reels").forEach((el) => (el.hidden = activeType !== "reels"));
   $all(".type-carousel").forEach((el) => (el.hidden = activeType !== "carousel"));
@@ -463,7 +585,6 @@ function loadEditingRecord(editId, context) {
   const source = context === "draft" ? drafts.find((x) => x.id === editId) : sheetData.find((x) => x.id === editId);
   if (!source) return null;
 
-  // Kalau ada autosave yang cocok dengan record ini, lanjutkan dari situ (bukan dari data asli)
   const saved = loadJSON(LS_FORMDRAFT, null);
   const useDraft = !!(saved && saved._editId === editId && saved._context === context);
   const d = useDraft ? { ...source, ...saved } : source;
@@ -516,6 +637,7 @@ function openModal(editId = null, forceType = "reels", context = "draft") {
   }
 
   toggleTypeFields(activeType);
+  syncSubDivisiField();
 }
 
 function closeModal() {
@@ -777,6 +899,7 @@ async function updateSheetInsight(payload) {
     saveJSON(LS_SHEETCACHE, sheetData);
     localStorage.removeItem(LS_FORMDRAFT);
     renderSheetGrid();
+    if (typeof renderArsipGrid === "function") renderArsipGrid();
     closeModal();
   } catch (e) {
     toast("Gagal memperbarui server", "error");
@@ -814,6 +937,14 @@ $("#saveCardBtn")?.addEventListener("click", async () => {
 
   const payload = { image: currentImageDataUrl, ...readFormFields("f", fieldsInsight) };
   const ctx = $("#f_edit_context")?.value || "draft";
+
+  // Sub divisi hanya untuk EXATA (wajib untuk input baru; data lama boleh dikosongkan saat edit)
+  if (payload.divisi !== "EXATA") {
+    payload.subdivisi = "";
+  } else if (!payload.subdivisi && ctx !== "sheet") {
+    toast("Pilih bagian EXATA dulu (AI / MT / SN)", "error");
+    return;
+  }
 
   if (ctx === "sheet" && currentEditId) {
     payload.id = currentEditId;
@@ -865,6 +996,7 @@ async function fetchSheetData() {
   } finally {
     if ($("#topLoadingBar")) $("#topLoadingBar").hidden = true;
     renderSheetGrid();
+    if (activeTab === "arsip" && typeof renderArsipGrid === "function") renderArsipGrid();
   }
 }
 
@@ -881,6 +1013,9 @@ function renderSheetGrid() {
 
   const list = sheetData.filter((d) => {
     if (d.divisi !== activeDivisiLaporan) return false;
+    if (d.isArchived) return false;
+    if (activeDivisiLaporan === "EXATA" && activeSubLaporan && activeSubLaporan !== "ALL"
+        && d.subdivisi !== activeSubLaporan) return false;
     if (kw && !(d.title || "").toLowerCase().includes(kw)) return false;
     if (from && d.posted < from) return false;
     if (to && d.posted > to) return false;
@@ -890,32 +1025,31 @@ function renderSheetGrid() {
 
   if ($("#sheetEmptyHint")) $("#sheetEmptyHint").hidden = list.length > 0;
 
-  // Urutan Minggu 1 di atas hingga Minggu 4 di bawah
   const weeks = ["Minggu 1", "Minggu 2", "Minggu 3", "Minggu 4"];
-
   weeks.forEach((w) => {
     const items = list
       .filter((item) => (item.week || "Minggu 1") === w)
-      .sort((a, b) => {
-        // Urutkan dari tanggal posting terbaru ke paling lama
-        const dateA = a.posted || "";
-        const dateB = b.posted || "";
-        if (dateA !== dateB) return dateB.localeCompare(dateA);
-        return (b._createdAt || 0) - (a._createdAt || 0);
-      });
+      .sort((a, b) => compareByDateAsc(a.posted, b.posted, a._createdAt, b._createdAt));
 
     if (items.length === 0) return;
 
     const accordion = document.createElement("details");
     accordion.className = "week-accordion";
-    accordion.open = true; // Default terbuka / maximize
+    accordion.open = true;
     accordion.innerHTML = `
       <summary class="week-summary">
-        <span>📅 ${w}</span>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <input type="checkbox" class="archive-checkbox" data-week="${w}" title="Centang untuk arsip" style="transform:scale(1.2); cursor:pointer;">
+          <span>📅 ${w}</span>
+        </div>
         <span class="week-count-badge">${items.length} Insight</span>
       </summary>
       <div class="week-content"></div>
     `;
+
+    // Cegah accordion menutup saat mencentang checkbox
+    const checkbox = accordion.querySelector('.archive-checkbox');
+    checkbox.addEventListener('click', (e) => e.stopPropagation());
 
     const contentGrid = accordion.querySelector(".week-content");
     items.forEach((d) => contentGrid.appendChild(buildCard(d, false, "sheet")));
@@ -933,8 +1067,10 @@ $("#refreshSheetBtn")?.addEventListener("click", fetchSheetData);
    9. EKSPOR EXCEL (SheetJS)
    ========================================================================== */
 $("#openExportModalBtn")?.addEventListener("click", () => {
-  if (sheetData.length === 0) {
-    toast("Data kosong", "error");
+  // Hanya mengekspor data yang BUKAN arsip
+  const unarchivedData = sheetData.filter(d => !d.isArchived);
+  if (unarchivedData.length === 0) {
+    toast("Tidak ada laporan aktif (data kosong/sudah diarsipkan semua)", "error");
     return;
   }
   if ($("#exportModalOverlay")) $("#exportModalOverlay").hidden = false;
@@ -954,6 +1090,7 @@ function toReelsRow(d) {
     "Timestamp": insightTimestamp(d),
     "ID": d.id,
     "Divisi": d.divisi,
+    "Minggu": d.week || "Minggu 1",
     "Judul Konten": d.title,
     "Script": d.script,
     "Reel Diposting": d.posted,
@@ -978,6 +1115,7 @@ function toCarouselRow(d) {
     "Timestamp": insightTimestamp(d),
     "ID": d.id,
     "Divisi": d.divisi,
+    "Minggu": d.week || "Minggu 1",
     "Judul Konten": d.title,
     "Isi Carousel": d.isi_carousel,
     "Tanggal Posting": d.posted,
@@ -999,15 +1137,19 @@ function toCarouselRow(d) {
 function buildSheetOrPlaceholder(rows) {
   return rows.length > 0
     ? XLSX.utils.json_to_sheet(rows)
-    : XLSX.utils.json_to_sheet([{ "Timestamp": "", "ID": "", "Divisi": "", "Judul Konten": "" }]);
+    : XLSX.utils.json_to_sheet([{ "Timestamp": "", "ID": "", "Divisi": "", "Minggu": "", "Judul Konten": "" }]);
 }
 
 $("#confirmExportBtn")?.addEventListener("click", () => {
   const choice = $("#exportDivisiSelect")?.value || "all";
-  const exportData = choice === "all" ? sheetData : sheetData.filter((d) => d.divisi === choice);
+  let exportData = sheetData.filter(d => !d.isArchived); // Export data aktif saja
+  
+  if (choice !== "all") {
+    exportData = exportData.filter((d) => d.divisi === choice);
+  }
 
   if (exportData.length === 0) {
-    toast("Tidak ada data untuk filter ini", "error");
+    toast("Tidak ada data aktif untuk filter divisi ini", "error");
     return;
   }
 
@@ -1038,6 +1180,7 @@ function planCardHtml(p) {
   return `<div class="plan-header">
       <div class="plan-meta">
         <span class="plan-date">${postingText}</span>
+        ${p.subdivisi ? `<span class="plan-format-badge">${escapeHtml(divisiLabel(p))}</span>` : ""}
         <span class="plan-format-badge">${p.format}</span>
       </div>
       <h3 class="plan-title">${escapeHtml(p.title)}</h3>
@@ -1081,6 +1224,7 @@ async function deletePlan(p) {
     plannerData = plannerData.filter((x) => x.id !== p.id);
     saveJSON(LS_PLANNER_DATA, plannerData);
     renderPlannerGrid();
+    if (typeof renderArsipGrid === "function") renderArsipGrid();
   } catch (e) {
     toast("Gagal menghapus plan", "error");
   }
@@ -1093,6 +1237,7 @@ function bindPlanCardEvents(card, p) {
     plannerData[idx].status = e.target.value;
     saveJSON(LS_PLANNER_DATA, plannerData);
     renderPlannerGrid();
+    if (typeof renderArsipGrid === "function") renderArsipGrid();
     syncPlanToSheet(plannerData[idx]);
   });
 
@@ -1111,6 +1256,9 @@ function renderPlannerGrid() {
 
   const list = plannerData.filter((p) => {
     if (p.divisi !== activeDivisiPlanner) return false;
+    if (p.isArchived) return false;
+    if (activeDivisiPlanner === "EXATA" && activeSubPlanner && activeSubPlanner !== "ALL"
+        && p.subdivisi !== activeSubPlanner) return false;
     if (kw && !(p.title.toLowerCase().includes(kw) || p.objective.toLowerCase().includes(kw))) return false;
     if (statFilt && p.status !== statFilt) return false;
     return true;
@@ -1118,32 +1266,31 @@ function renderPlannerGrid() {
 
   if ($("#plannerEmptyHint")) $("#plannerEmptyHint").hidden = list.length > 0;
 
-  // Urutan Minggu 1 di atas hingga Minggu 4 di bawah
   const weeks = ["Minggu 1", "Minggu 2", "Minggu 3", "Minggu 4"];
-
   weeks.forEach((w) => {
     const items = list
       .filter((item) => (item.week || "Minggu 1") === w)
-      .sort((a, b) => {
-        // Urutkan dari tanggal plan/posting terbaru ke paling lama
-        const dateA = a.planDate || a.createdDate || "";
-        const dateB = b.planDate || b.createdDate || "";
-        if (dateA !== dateB) return dateB.localeCompare(dateA);
-        return (b._createdAt || 0) - (a._createdAt || 0);
-      });
+      .sort((a, b) => compareByDateAsc(a.planDate || a.createdDate, b.planDate || b.createdDate, a._createdAt, b._createdAt));
 
     if (items.length === 0) return;
 
     const accordion = document.createElement("details");
     accordion.className = "week-accordion";
-    accordion.open = true; // Default terbuka / maximize
+    accordion.open = true;
     accordion.innerHTML = `
       <summary class="week-summary">
-        <span>🗓️ ${w}</span>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <input type="checkbox" class="archive-checkbox" data-week="${w}" title="Centang untuk arsip" style="transform:scale(1.2); cursor:pointer;">
+          <span>🗓️ ${w}</span>
+        </div>
         <span class="week-count-badge">${items.length} Plan</span>
       </summary>
       <div class="week-content"></div>
     `;
+
+    // Cegah accordion menutup saat mencentang checkbox
+    const checkbox = accordion.querySelector('.archive-checkbox');
+    checkbox.addEventListener('click', (e) => e.stopPropagation());
 
     const contentGrid = accordion.querySelector(".week-content");
     items.forEach((p) => {
@@ -1158,6 +1305,17 @@ function renderPlannerGrid() {
     grid.appendChild(accordion);
   });
 }
+
+function syncPlanSubField() {
+  const isExata = $("#p_divisi")?.value === "EXATA";
+  if ($("#p_subdivisi_wrap")) $("#p_subdivisi_wrap").hidden = !isExata;
+}
+
+$("#p_divisi")?.addEventListener("change", () => {
+  syncPlanSubField();
+  if ($("#p_divisi").value !== "EXATA" && $("#p_subdivisi")) $("#p_subdivisi").value = "";
+  autosavePlanDraft();
+});
 
 function openPlanModal(editId = null) {
   plannerEditId = editId;
@@ -1186,8 +1344,11 @@ function openPlanModal(editId = null) {
       fillFormFields("p", fieldsPlan, {});
       if ($("#p_format")) $("#p_format").value = "video";
       if ($("#p_divisi")) $("#p_divisi").value = activeDivisiPlanner || "EXATA";
+      // otomatis pakai bagian yang sedang dibuka (AI/MT/SN), bisa diganti manual
+      if ($("#p_subdivisi") && activeSubPlanner && activeSubPlanner !== "ALL") $("#p_subdivisi").value = activeSubPlanner;
     }
   }
+  syncPlanSubField();
 }
 
 function closePlanModal() {
@@ -1223,6 +1384,14 @@ $("#savePlanBtn")?.addEventListener("click", () => {
   const payload = readFormFields("p", fieldsPlan);
   let savedPlan = null;
 
+  // Sub divisi hanya untuk EXATA (wajib untuk plan baru; plan lama boleh dikosongkan saat edit)
+  if (payload.divisi !== "EXATA") {
+    payload.subdivisi = "";
+  } else if (!payload.subdivisi && !plannerEditId) {
+    toast("Pilih bagian EXATA dulu (AI / MT / SN)", "error");
+    return;
+  }
+
   if (plannerEditId) {
     const idx = plannerData.findIndex((x) => x.id === plannerEditId);
     if (idx !== -1) {
@@ -1242,6 +1411,7 @@ $("#savePlanBtn")?.addEventListener("click", () => {
   saveJSON(LS_PLANNER_DATA, plannerData);
   localStorage.removeItem(LS_PLAN_DRAFT);
   renderPlannerGrid();
+  if (typeof renderArsipGrid === "function") renderArsipGrid();
   closePlanModal();
   if (savedPlan) syncPlanToSheet(savedPlan);
 });
@@ -1274,6 +1444,7 @@ async function fetchPlannerData() {
   } finally {
     if ($("#topLoadingBar")) $("#topLoadingBar").hidden = true;
     renderPlannerGrid();
+    if (activeTab === "arsip" && typeof renderArsipGrid === "function") renderArsipGrid();
   }
 }
 
@@ -1284,7 +1455,219 @@ $("#refreshPlannerBtn")?.addEventListener("click", fetchPlannerData);
 });
 
 /* ==========================================================================
-   11. BANNER "LANJUTKAN DRAFT" (autosave lintas tab/refresh/restart)
+   11. FUNGSI ARCHIVE SYSTEM (BARU)
+   ========================================================================== */
+
+// Fungsi untuk Memindahkan Data (Minggu Terpilih) ke Arsip
+async function archiveSelectedWeeks(type) {
+  const activeDivisi = type === "sheet" ? activeDivisiLaporan : activeDivisiPlanner;
+  
+  if (!activeDivisi) {
+    toast("Silahkan pilih divisi terlebih dahulu.", "error");
+    return;
+  }
+
+  // 1. Ambil data checkbox yang sedang dicentang
+  const gridId = type === "sheet" ? "#sheetGrid" : "#plannerGrid";
+  const grid = document.querySelector(gridId);
+  if (!grid) return;
+
+  const checkedBoxes = Array.from(grid.querySelectorAll('.archive-checkbox:checked'));
+  if (checkedBoxes.length === 0) {
+    toast("Pilih minimal satu kotak minggu untuk diarsipkan.", "error");
+    return;
+  }
+
+  // 2. Minta User menamai Arsip ini
+  const customArchiveName = prompt("Masukkan nama untuk Arsip ini (Contoh: 'Arsip Campaign Lebaran' atau 'Bulan Maret'):");
+  if (!customArchiveName || !customArchiveName.trim()) {
+    toast("Nama arsip tidak boleh kosong. Proses dibatalkan.", "error");
+    return;
+  }
+
+  const targetWeeks = checkedBoxes.map(cb => cb.dataset.week);
+  const safeName = customArchiveName.trim();
+  let count = 0;
+
+  // 3. Eksekusi Pemindahan ke Arsip dengan nama custom
+  if (type === "sheet") {
+    sheetData.forEach(d => {
+      const weekVal = d.week || "Minggu 1";
+      const subOk = activeDivisi !== "EXATA" || !activeSubLaporan || activeSubLaporan === "ALL"
+        || d.subdivisi === activeSubLaporan;
+      if (d.divisi === activeDivisi && subOk && !d.isArchived && targetWeeks.includes(weekVal)) {
+        d.isArchived = true;
+        d.archiveName = safeName; // Simpan properti nama custom
+        count++;
+        if (isServerConfigured()) {
+          fetch(APPS_SCRIPT_URL, { method: "POST", body: JSON.stringify({ action: "update_insight", data: d }) }).catch(e=>e);
+        }
+      }
+    });
+    if (count > 0) {
+      saveJSON(LS_SHEETCACHE, sheetData);
+      renderSheetGrid();
+    }
+  } else if (type === "planner") {
+    plannerData.forEach(p => {
+      const weekVal = p.week || "Minggu 1";
+      const subOkP = activeDivisi !== "EXATA" || !activeSubPlanner || activeSubPlanner === "ALL"
+        || p.subdivisi === activeSubPlanner;
+      if (p.divisi === activeDivisi && subOkP && !p.isArchived && targetWeeks.includes(weekVal)) {
+        p.isArchived = true;
+        p.archiveName = safeName; // Simpan properti nama custom
+        count++;
+        if (isServerConfigured()) {
+          fetch(APPS_SCRIPT_URL, { method: "POST", body: JSON.stringify({ action: "sync_plan", plan: p }) }).catch(e=>e);
+        }
+      }
+    });
+    if (count > 0) {
+      saveJSON(LS_PLANNER_DATA, plannerData);
+      renderPlannerGrid();
+    }
+  }
+
+  if (count > 0) {
+    toast(`${count} item berhasil diarsipkan sebagai "${safeName}".`, "success");
+    if (activeTab === "arsip") renderArsipGrid();
+  }
+}
+
+// Fungsi untuk Mengembalikan Data dari Arsip
+function unarchiveItem(id, type) {
+  if (type === "sheet") {
+    const item = sheetData.find(x => x.id === id);
+    if (item) {
+      item.isArchived = false;
+      saveJSON(LS_SHEETCACHE, sheetData);
+      if (isServerConfigured()) {
+        fetch(APPS_SCRIPT_URL, { method: "POST", body: JSON.stringify({ action: "update_insight", data: item }) }).catch(e=>e);
+      }
+    }
+  } else {
+    const item = plannerData.find(x => x.id === id);
+    if (item) {
+      item.isArchived = false;
+      saveJSON(LS_PLANNER_DATA, plannerData);
+      if (isServerConfigured()) {
+        fetch(APPS_SCRIPT_URL, { method: "POST", body: JSON.stringify({ action: "sync_plan", plan: item }) }).catch(e=>e);
+      }
+    }
+  }
+
+  toast("Data berhasil dikembalikan dari arsip.", "success");
+  renderArsipGrid();
+  if (activeDivisiLaporan) renderSheetGrid();
+  if (activeDivisiPlanner) renderPlannerGrid();
+}
+
+// Merender Isi Halaman Arsip
+function renderArsipGrid() {
+  const grid = $("#arsipGrid");
+  if (!grid) return;
+  grid.innerHTML = "";
+
+  const kw = $("#arsipSearch")?.value.toLowerCase();
+  const statusFilt = $("#arsipStatus")?.value;
+  const dateFilt = $("#arsipDate")?.value;
+
+  const archivedSheets = sheetData.filter(d => {
+    if (!d.isArchived) return false;
+    if (kw && !(d.title || "").toLowerCase().includes(kw)) return false;
+    if (dateFilt && d.posted !== dateFilt) return false;
+    return true;
+  });
+
+  const archivedPlans = plannerData.filter(p => {
+    if (!p.isArchived) return false;
+    if (kw && !(p.title.toLowerCase().includes(kw) || (p.objective && p.objective.toLowerCase().includes(kw)))) return false;
+    if (statusFilt && p.status !== statusFilt) return false;
+    if (dateFilt && p.planDate !== dateFilt) return false;
+    return true;
+  });
+
+  if (archivedSheets.length === 0 && archivedPlans.length === 0) {
+    grid.innerHTML = `<div class="empty-hint" style="text-align:center; padding: 40px; color:var(--gray-dark);">Belum ada data (atau data sesuai pencarian) yang diarsipkan.</div>`;
+    return;
+  }
+
+  // Helper function untuk mengelompokkan arsip berdasar custom "archiveName"
+  // Item diurutkan dulu (terlama -> terbaru) sehingga kartu di tiap folder arsip juga berurutan.
+  const groupByArchiveName = (items, dateOf) => {
+    const ordered = [...items].sort((x, y) => compareByDateAsc(dateOf(x), dateOf(y), x._createdAt, y._createdAt));
+    return ordered.reduce((acc, item) => {
+      const name = item.archiveName || `Arsip ${item.week || "Lama"}`; // Fallback jika data lama belum punya nama
+      if (!acc[name]) acc[name] = [];
+      acc[name].push(item);
+      return acc;
+    }, {});
+  };
+
+  // 1. Tampilkan Grid Laporan Arsip (Dikelompokkan berdasar Nama Custom)
+  if (archivedSheets.length > 0) {
+    const secSheet = document.createElement("div");
+    secSheet.innerHTML = `<h3 style="margin: 16px 0 8px; color:var(--primary); font-size:16px;">📊 Laporan Insight Tersimpan</h3>`;
+    
+    const groupedSheets = groupByArchiveName(archivedSheets, (d) => d.posted);
+    for (const [aName, items] of Object.entries(groupedSheets)) {
+      const accordion = document.createElement("details");
+      accordion.className = "week-accordion";
+      accordion.open = true;
+      accordion.innerHTML = `<summary class="week-summary"><span>📁 ${aName}</span><span class="week-count-badge">${items.length} Item</span></summary><div class="week-content"></div>`;
+      
+      const cGrid = accordion.querySelector(".week-content");
+      items.forEach(d => {
+        const card = buildCard(d, false, "sheet"); 
+        const unarchBtn = document.createElement("button");
+        unarchBtn.className = "btn-ghost";
+        unarchBtn.style.cssText = "width:100%; margin-top:8px; border:1px solid var(--border);";
+        unarchBtn.innerHTML = "↖️ Kembalikan (Unarchive)";
+        unarchBtn.onclick = () => unarchiveItem(d.id, "sheet");
+        card.querySelector(".card-body").appendChild(unarchBtn);
+        cGrid.appendChild(card);
+      });
+      secSheet.appendChild(accordion);
+    }
+    grid.appendChild(secSheet);
+  }
+
+  // 2. Tampilkan Grid Planner Arsip (Dikelompokkan berdasar Nama Custom)
+  if (archivedPlans.length > 0) {
+    const secPlan = document.createElement("div");
+    secPlan.innerHTML = `<h3 style="margin: 24px 0 8px; color:var(--primary); font-size:16px;">🗓️ Planner Tersimpan</h3>`;
+    
+    const groupedPlans = groupByArchiveName(archivedPlans, (p) => p.planDate || p.createdDate);
+    for (const [aName, items] of Object.entries(groupedPlans)) {
+      const accordion = document.createElement("details");
+      accordion.className = "week-accordion";
+      accordion.open = true;
+      accordion.innerHTML = `<summary class="week-summary"><span>📁 ${aName}</span><span class="week-count-badge">${items.length} Item</span></summary><div class="week-content"></div>`;
+      
+      const cGrid = accordion.querySelector(".week-content");
+      items.forEach(p => {
+        const card = document.createElement("div");
+        card.className = `plan-card format-${p.format} status-${p.status}`;
+        card.dataset.id = p.id;
+        card.innerHTML = planCardHtml(p);
+        bindPlanCardEvents(card, p);
+
+        const unarchBtn = document.createElement("button");
+        unarchBtn.className = "btn-ghost";
+        unarchBtn.style.cssText = "width:100%; margin-top:8px; border:1px solid var(--border);";
+        unarchBtn.innerHTML = "↖️ Kembalikan (Unarchive)";
+        unarchBtn.onclick = () => unarchiveItem(p.id, "planner");
+        card.querySelector(".plan-footer").appendChild(unarchBtn);
+        cGrid.appendChild(card);
+      });
+      secPlan.appendChild(accordion);
+    }
+    grid.appendChild(secPlan);
+  }
+}
+
+/* ==========================================================================
+   12. BANNER "LANJUTKAN DRAFT" (autosave lintas tab/refresh/restart)
    ========================================================================== */
 function resumeInsightDraft() {
   const d = loadJSON(LS_FORMDRAFT, null);
@@ -1293,10 +1676,8 @@ function resumeInsightDraft() {
   if (d._context === "sheet" && d.divisi) {
     switchTab("lihat");
     activeDivisiLaporan = d.divisi;
-    if ($("#laporanDivisiTitle")) $("#laporanDivisiTitle").textContent = "Laporan: " + activeDivisiLaporan;
-    if ($("#laporanDivisiMenu")) $("#laporanDivisiMenu").hidden = true;
-    if ($("#laporanContent")) $("#laporanContent").hidden = false;
-    renderSheetGrid();
+    activeSubLaporan = d.divisi === "EXATA" ? (d.subdivisi || "ALL") : null;
+    showLaporanContent();
   } else {
     switchTab("input");
   }
@@ -1316,10 +1697,8 @@ function resumePlanDraft() {
   switchTab("planner");
   if (d.divisi) {
     activeDivisiPlanner = d.divisi;
-    if ($("#plannerDivisiTitle")) $("#plannerDivisiTitle").textContent = "Planner: " + activeDivisiPlanner;
-    if ($("#plannerDivisiMenu")) $("#plannerDivisiMenu").hidden = true;
-    if ($("#plannerContent")) $("#plannerContent").hidden = false;
-    renderPlannerGrid();
+    activeSubPlanner = d.divisi === "EXATA" ? (d.subdivisi || "ALL") : null;
+    showPlannerContent();
   }
   openPlanModal(d._editId || null);
 }
@@ -1376,7 +1755,7 @@ function renderResumeBanners() {
 }
 
 /* ==========================================================================
-   12. INIT
+   13. INIT
    ========================================================================== */
 renderDrafts();
 renderResumeBanners();
