@@ -649,5 +649,75 @@ textarea:focus-visible, select:focus-visible, [tabindex]:focus-visible{
   color: #fff;
 }
 
+/* ==========================================================================
+   WARNA BIRU KARTU MINGGU & CHECKBOX
+   ========================================================================== */
+.week-summary {
+  padding: 16px 24px;
+  font-weight: 700;
+  font-size: 16.5px;
+  background: #1e88e5; /* Biru */
+  color: #ffffff;      /* Teks Putih */
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  user-select: none;
+  transition: background 0.2s ease, color 0.2s ease;
+}
 
+.week-summary:hover {
+  background: #1565c0; /* Biru Gelap saat hover */
+}
+
+.week-summary .week-count-badge {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+.week-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Checkbox Arsip */
+.week-checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #0d47a1;
+}
+
+/* Tombol Floating Arsipkan */
+.archive-action-bar {
+  margin-bottom: 15px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ==========================================================================
+   HEADER MEMBEKU ARSIP (FROZEN HEADER)
+   ========================================================================== */
+.arsip-frozen-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--surface);
+  padding: 15px;
+  border-bottom: 1px solid var(--line);
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  border-radius: var(--radius-md);
+}
+
+.arsip-frozen-header input,
+.arsip-frozen-header select {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  flex: 1;
+}
 
