@@ -1,5 +1,5 @@
 /* ==========================================================================
-   REELSIGHT v4.4 — Sub Divisi EXATA (AI/MT/SN) di Laporan & Planner + Multi-Divisi + Server CRUD + Excel Export + ARSIP SYSTEM
+   REELSIGHT v4.5 — Sub Divisi EXATA di Laporan & Planner + Link Referensi/Hasil (popup embed) + Multi-Divisi + Server CRUD + Excel Export + ARSIP SYSTEM
    ========================================================================== */
 
 /* ==========================================================================
@@ -29,7 +29,7 @@ const fieldsInsight = [
   "downloaded", "caption", "views", "reach", "duration", "watchtime",
   "kunjungan", "mengikuti", "likes", "comments", "reposts", "shares", "saves"
 ];
-const fieldsPlan = ["divisi", "subdivisi", "week", "title", "planDate", "format", "objective", "concept", "script"];
+const fieldsPlan = ["divisi", "subdivisi", "week", "title", "planDate", "format", "objective", "concept", "script", "linkRef", "linkHasil"];
 
 /* ==========================================================================
    2. UTILITAS DASAR
@@ -166,35 +166,110 @@ lightbox?.addEventListener("click", (e) => {
   if (e.target.id === "lightbox") lightbox.hidden = true;
 });
 
-function buildEmbedUrl(url) {
+/* Rapikan link: tambah https:// bila lupa, hanya izinkan http/https. Kosong/tidak valid -> "" */
+function normalizeUrl(raw) {
+  let v = String(raw || "").trim();
+  if (!v) return "";
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(v)) v = "https://" + v;
+  try {
+    const u = new URL(v);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return "";
+    if (!u.hostname.includes(".")) return "";
+    return u.href;
+  } catch (e) {
+    return "";
+  }
+}
+
+/* Ubah link biasa menjadi link embed (bila situsnya mendukung). kind: "portrait" | "wide" */
+function buildEmbedInfo(url) {
   try {
     const u = new URL(url);
-    if (u.hostname.includes("instagram.com")) {
+    const host = u.hostname.replace(/^www\./, "");
+    const parts = u.pathname.split("/").filter(Boolean);
+
+    if (host.endsWith("instagram.com")) {
       const path = u.pathname.endsWith("/") ? u.pathname : u.pathname + "/";
-      return `https://www.instagram.com${path}embed`;
+      return { src: `https://www.instagram.com${path}embed`, kind: "portrait" };
+    }
+    if (host.endsWith("tiktok.com")) {
+      const i = parts.indexOf("video");
+      if (i > -1 && parts[i + 1]) return { src: `https://www.tiktok.com/embed/v2/${parts[i + 1]}`, kind: "portrait" };
+    }
+    if (host === "youtu.be" && parts[0]) {
+      return { src: `https://www.youtube.com/embed/${parts[0]}`, kind: "wide" };
+    }
+    if (host.endsWith("youtube.com")) {
+      if (parts[0] === "shorts" && parts[1]) return { src: `https://www.youtube.com/embed/${parts[1]}`, kind: "portrait" };
+      if (parts[0] === "embed") return { src: url, kind: "wide" };
+      const v = u.searchParams.get("v");
+      if (v) return { src: `https://www.youtube.com/embed/${v}`, kind: "wide" };
+    }
+    if (host === "vimeo.com" && /^\d+$/.test(parts[0] || "")) {
+      return { src: `https://player.vimeo.com/video/${parts[0]}`, kind: "wide" };
+    }
+    if (host === "drive.google.com") {
+      const di = parts.indexOf("d");
+      if (parts[0] === "file" && di > -1 && parts[di + 1]) return { src: `https://drive.google.com/file/d/${parts[di + 1]}/preview`, kind: "wide" };
+      const id = u.searchParams.get("id");
+      if ((parts[0] === "open" || parts[0] === "uc") && id) return { src: `https://drive.google.com/file/d/${id}/preview`, kind: "wide" };
+      const fi = parts.indexOf("folders");
+      if (fi > -1 && parts[fi + 1]) return { src: `https://drive.google.com/embeddedfolderview?id=${parts[fi + 1]}#list`, kind: "wide" };
+    }
+    if (host === "docs.google.com" && ["document", "spreadsheets", "presentation"].includes(parts[0])) {
+      const di = parts.indexOf("d");
+      if (di > -1 && parts[di + 1]) return { src: `https://docs.google.com/${parts[0]}/d/${parts[di + 1]}/preview`, kind: "wide" };
+    }
+    if (host.endsWith("canva.com") && parts[0] === "design" && !u.searchParams.has("embed")) {
+      u.searchParams.set("embed", "");
+      return { src: u.href.replace("embed=", "embed"), kind: "wide" };
     }
   } catch (e) {
     /* URL tidak valid, pakai apa adanya */
   }
-  return url;
+  return { src: url, kind: "wide" };
 }
 
-function openEmbed(url) {
-  if (!url) return;
+function buildEmbedUrl(url) {
+  return buildEmbedInfo(url).src;
+}
 
-  const eUrl = buildEmbedUrl(url);
+function openEmbed(rawUrl, title) {
+  const url = normalizeUrl(rawUrl);
+  if (!url) {
+    toast("Link tidak valid", "error");
+    return;
+  }
+  const info = buildEmbedInfo(url);
+  const portrait = info.kind === "portrait";
+
+  if ($("#embedTitle")) $("#embedTitle").textContent = title || "Preview";
   if ($("#embedNewTab")) $("#embedNewTab").href = url;
-  if ($("#embedFrame")) $("#embedFrame").src = eUrl;
+  if ($("#embedModal")) $("#embedModal").style.maxWidth = portrait ? "420px" : "920px";
+  if ($("#embedFrame")) {
+    $("#embedFrame").style.height = portrait ? "min(70vh, 480px)" : "min(65vh, 560px)";
+    $("#embedFrame").src = info.src;
+  }
   if ($("#embedOverlay")) {
     $("#embedOverlay").hidden = false;
     document.body.style.overflow = "hidden";
   }
 }
 
-$("#embedCloseBtn")?.addEventListener("click", () => {
+function closeEmbed() {
   if ($("#embedOverlay")) $("#embedOverlay").hidden = true;
-  if ($("#embedFrame")) $("#embedFrame").src = "";
-  document.body.style.overflow = "";
+  if ($("#embedFrame")) $("#embedFrame").src = "about:blank";
+  // jangan buka kunci scroll jika modal lain (mis. form plan) masih terbuka
+  const otherOpen = Array.from(document.querySelectorAll(".modal-overlay")).some((el) => el.id !== "embedOverlay" && !el.hidden);
+  if (!otherOpen) document.body.style.overflow = "";
+}
+
+$("#embedCloseBtn")?.addEventListener("click", closeEmbed);
+$("#embedOverlay")?.addEventListener("click", (e) => {
+  if (e.target.id === "embedOverlay") closeEmbed();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && $("#embedOverlay") && !$("#embedOverlay").hidden) closeEmbed();
 });
 
 /* ==========================================================================
@@ -517,7 +592,7 @@ function bindCardEvents(card, d, editable, context) {
   });
 
   if (!editable) {
-    card.querySelector(".clickable-embed")?.addEventListener("click", () => openEmbed(d.link));
+    card.querySelector(".clickable-embed")?.addEventListener("click", () => openEmbed(d.link, "Preview Konten"));
   }
 }
 
@@ -1172,6 +1247,18 @@ $("#confirmExportBtn")?.addEventListener("click", () => {
    ========================================================================== */
 const planOverlay = $("#plannerModalOverlay");
 
+function planLinksHtml(p) {
+  const ref = normalizeUrl(p.linkRef);
+  const hasil = normalizeUrl(p.linkHasil);
+  if (!ref && !hasil) return "";
+  const btn = (url, cls, title, label) =>
+    `<button type="button" class="plan-link-btn ${cls}" data-link="${escapeHtml(url)}" data-title="${title}">${label}</button>`;
+  return `<div class="plan-links">
+      ${ref ? btn(ref, "ref", "Link Referensi", "🔗 Referensi") : ""}
+      ${hasil ? btn(hasil, "hasil", "Link Hasil", "🎬 Hasil") : ""}
+    </div>`;
+}
+
 function planCardHtml(p) {
   const postingText = p.planDate 
     ? `posting tanggal : ${fmtPlanDate(p.planDate)}` 
@@ -1194,6 +1281,7 @@ function planCardHtml(p) {
       </div>
     </div>
     <div class="plan-body">
+      ${planLinksHtml(p)}
       <details class="plan-details">
         <summary>Lihat Rincian Plan</summary>
         <div class="plan-details-content">
@@ -1241,6 +1329,9 @@ function bindPlanCardEvents(card, p) {
     syncPlanToSheet(plannerData[idx]);
   });
 
+  card.querySelectorAll(".plan-link-btn").forEach((btn) => {
+    btn.addEventListener("click", () => openEmbed(btn.dataset.link, btn.dataset.title));
+  });
   card.querySelector('[data-act="edit-plan"]')?.addEventListener("click", () => openPlanModal(p.id));
   card.querySelector('[data-act="del-plan"]')?.addEventListener("click", () => deletePlan(p));
 }
@@ -1391,6 +1482,14 @@ $("#savePlanBtn")?.addEventListener("click", () => {
     toast("Pilih bagian EXATA dulu (AI / MT / SN)", "error");
     return;
   }
+
+  // Link referensi & hasil: opsional, tapi kalau diisi harus link http/https yang valid
+  const linkRef = normalizeUrl(payload.linkRef);
+  const linkHasil = normalizeUrl(payload.linkHasil);
+  if (payload.linkRef && !linkRef) { toast("Link Referensi tidak valid", "error"); return; }
+  if (payload.linkHasil && !linkHasil) { toast("Link Hasil tidak valid", "error"); return; }
+  payload.linkRef = linkRef;
+  payload.linkHasil = linkHasil;
 
   if (plannerEditId) {
     const idx = plannerData.findIndex((x) => x.id === plannerEditId);
